@@ -325,9 +325,7 @@ app.use("/api/v1/users", require("./routes/userRoutes"));
 app.use("/api/v1/recipes", require("./routes/recipeRoutes"));
 app.use("/api/v1/admin", require("./routes/adminRoutes"));
 
-app.get("/", (req, res) => {
-  res.send("Restaurant API Ready");
-});
+
 
 // =====================
 // DB
@@ -341,7 +339,9 @@ mongoose
 // START SERVER
 // =====================
 const PORT = process.env.PORT || 5000;
-
+app.get("/", (req, res) => {
+  res.send("Restaurant API Ready");
+});
 server.listen(PORT, () => {
   console.log(
     `🚀 Server running on port ${PORT} in ${
