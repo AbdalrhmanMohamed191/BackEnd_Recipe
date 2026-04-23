@@ -115,19 +115,74 @@ router.get("/myorders", authMiddleware, async (req, res) => {
 
 
 // ================= GET ALL ORDERS (ADMIN ONLY) =================
+// router.get("/all", authMiddleware, async (req, res) => {
+//   try {
+//     const orders = await Order.find({ isArchived: false })
+//       .populate("userId", "name phone")
+//       .sort({ createdAt: -1 });
+
+//     res.json(orders);
+
+//   } catch (err) {
+//     res.status(500).json({ message: err.message });
+//   }
+// });
+
 router.get("/all", authMiddleware, async (req, res) => {
   try {
-    const orders = await Order.find({ isArchived: false })
+    const { date, all } = req.query;
+
+    let filter = { isArchived: false };
+
+    // =====================
+    // ALL ORDERS
+    // =====================
+    if (all === "true") {
+      const orders = await Order.find(filter)
+        .populate("userId", "name phone")
+        .sort({ createdAt: -1 });
+
+      return res.json(orders);
+    }
+
+    // =====================
+    // TODAY / DATE FILTER
+    // =====================
+    if (date) {
+      const start = new Date(date);
+      start.setHours(0, 0, 0, 0);
+
+      const end = new Date(date);
+      end.setHours(23, 59, 59, 999);
+
+      filter.createdAt = {
+        $gte: start,
+        $lte: end,
+      };
+    } else {
+      // default = today
+      const now = new Date();
+      const start = new Date(now);
+      start.setHours(0, 0, 0, 0);
+
+      const end = new Date(now);
+      end.setHours(23, 59, 59, 999);
+
+      filter.createdAt = {
+        $gte: start,
+        $lte: end,
+      };
+    }
+
+    const orders = await Order.find(filter)
       .populate("userId", "name phone")
       .sort({ createdAt: -1 });
 
     res.json(orders);
-
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
 
 // ================= UPDATE STATUS =================
 router.put("/:id/status", authMiddleware, async (req, res) => {
@@ -158,6 +213,54 @@ router.put("/:id/status", authMiddleware, async (req, res) => {
     res.json(order);
 
   } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// ReOrder
+router.get("/:id/reorder", async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id);
+
+    if (!order) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+
+    const items = [];
+
+    for (const item of order.items || []) {
+      // 🔥 نحاول نجيب productId بأي شكل
+      const productId = item.productId || item._id || item.product;
+
+      if (!productId) continue;
+
+      const product = await Product.findById(productId);
+
+      if (!product) continue;
+
+      const price =
+        product.isActive && product.discount > 0
+          ? product.price - (product.price * product.discount) / 100
+          : product.price;
+
+      items.push({
+        _id: product._id,
+        title: product.title,
+        price,
+        quantity: item.quantity || 1,
+      });
+    }
+
+    if (items.length === 0) {
+      return res.status(400).json({
+        message: "No valid items found in order",
+        debug: order.items,
+      });
+    }
+
+    res.json(items);
+  } catch (err) {
+    console.log("REORDER ERROR:", err);
     res.status(500).json({ message: err.message });
   }
 });
