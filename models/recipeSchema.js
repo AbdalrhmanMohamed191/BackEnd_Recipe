@@ -24,7 +24,7 @@ const recipeSchema = new mongoose.Schema({
     category: {
         type: String,
         required: false,
-        enum: ['beef', 'chicken', 'pizza', 'dessert', 'seafood', 'pasta', 'salad', 'soup']
+        enum: ['beef', 'chicken', 'pizza', 'dessert', 'seafood', 'pasta', 'salad', 'soup','burger','drinks']
     }
 }
 ,{
