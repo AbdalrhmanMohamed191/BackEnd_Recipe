@@ -68,7 +68,7 @@ io.on("connection", (socket) => {
 // ROUTES
 // =====================
 app.use("/api/v1/orders", require("./routes/orderRoutes"));
-app.use("/api/v1/users", require("./routes/userRoutes"));
+app.use("/api/v1/users", require("./routes/UserRoutes"));
 app.use("/api/v1/recipes", require("./routes/recipeRoutes"));
 app.use("/api/v1/admin", require("./routes/adminRoutes"));
 app.use("/api/v1/contact", require("./routes/contactRoutes"));
