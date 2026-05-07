@@ -9,63 +9,243 @@ const { roleMiddleware } = require("../middleWares/roleMiddleware");
 const getIo = (req) => req.app.get("io");
 
 // CREATE
-router.post("/", authMiddleware, roleMiddleware("admin"), upload.single("image"), async (req, res) => {
-    try {
-      const { title, instructions, price, category } = req.body;
-      if (!title || !instructions || !price) return res.status(400).json({ message: "Missing fields" });
-      if (!req.file) return res.status(400).json({ message: "Image required" });
+// router.post("/", authMiddleware, roleMiddleware("admin"), upload.single("image"), async (req, res) => {
+//     try {
+//       const { title, instructions, price, category } = req.body;
+//       if (!title || !instructions || !price) return res.status(400).json({ message: "Missing fields" });
+//       if (!req.file) return res.status(400).json({ message: "Image required" });
 
-      let ingredients = [];
-      if (typeof req.body.ingredients === "string") {
-        ingredients = req.body.ingredients.split(",").map(i => i.trim());
-      } else {
-        ingredients = req.body.ingredients || [];
+//       let ingredients = [];
+//       if (typeof req.body.ingredients === "string") {
+//         ingredients = req.body.ingredients.split(",").map(i => i.trim());
+//       } else {
+//         ingredients = req.body.ingredients || [];
+//       }
+
+//       const recipe = new Recipe({
+//         title,
+//         instructions,
+//         price,
+//         category,
+//         ingredients,
+//         CoverImage: `/images/${req.file.filename}`,
+//       });
+
+//       await recipe.save();
+
+//       const created = await Recipe.findById(recipe._id).populate("category");
+//       // 🔥 إرسال الإشارة بالاسم الصحيح
+//       const io = getIo(req);
+//       if (io) io.emit("recipeCreated", recipe || created);
+
+//       return res.status(201).json({ message: "Created", recipe });
+//     } catch (err) {
+//       res.status(500).json({ message: err.message });
+//     }
+// });
+
+
+// router.post("/", authMiddleware, roleMiddleware("admin"), upload.single("image"), async (req, res) => {
+//   try {
+//     const { title, instructions, category } = req.body;
+
+//     if (!title || !instructions) {
+//       return res.status(400).json({ message: "Missing fields" });
+//     }
+
+//     if (!req.file) {
+//       return res.status(400).json({ message: "Image required" });
+//     }
+
+//     let ingredients = [];
+//     if (typeof req.body.ingredients === "string") {
+//       ingredients = req.body.ingredients.split(",").map(i => i.trim());
+//     }
+
+//     // 🔥 أهم جزء
+//     let variants = [];
+//     if (req.body.variants) {
+//       variants = JSON.parse(req.body.variants); 
+//       // لازم تبعتها من الفرونت JSON string
+//     }
+
+//     const recipe = new Recipe({
+//       title,
+//       instructions,
+//       category,
+//       ingredients,
+//       variants,
+//       CoverImage: `/images/${req.file.filename}`,
+//     });
+
+//     await recipe.save();
+
+//     const io = getIo(req);
+//     if (io) io.emit("recipeCreated", recipe);
+
+//     res.status(201).json({ message: "Created", recipe });
+
+//   } catch (err) {
+//     res.status(500).json({ message: err.message });
+//   }
+// });
+
+router.post(
+  "/",
+  authMiddleware,
+  roleMiddleware("admin"),
+  upload.single("image"),
+  async (req, res) => {
+    try {
+      const { title, instructions, category } = req.body;
+
+      if (!title || !instructions) {
+        return res.status(400).json({ message: "Missing fields" });
       }
 
+      if (!req.file) {
+        return res.status(400).json({ message: "Image required" });
+      }
+
+      // ================= INGREDIENTS =================
+      let ingredients = [];
+
+      if (typeof req.body.ingredients === "string") {
+        ingredients = req.body.ingredients
+          .split(",")
+          .map((i) => i.trim())
+          .filter(Boolean);
+      }
+
+      // ================= VARIANTS FIX (IMPORTANT) =================
+      let variants = [];
+
+      if (req.body.variants) {
+        try {
+          variants =
+            typeof req.body.variants === "string"
+              ? JSON.parse(req.body.variants)
+              : req.body.variants;
+        } catch (err) {
+          return res.status(400).json({
+            message: "Invalid variants format (must be JSON)",
+          });
+        }
+      }
+
+      // ================= CREATE =================
       const recipe = new Recipe({
         title,
         instructions,
-        price,
         category,
         ingredients,
+        variants: variants || [],
         CoverImage: `/images/${req.file.filename}`,
       });
 
       await recipe.save();
 
-      const created = await Recipe.findById(recipe._id).populate("category");
-      // 🔥 إرسال الإشارة بالاسم الصحيح
+      // ================= SOCKET =================
       const io = getIo(req);
-      if (io) io.emit("recipeCreated", recipe || created);
+      if (io) io.emit("recipeCreated", recipe);
 
-      return res.status(201).json({ message: "Created", recipe });
+      res.status(201).json({
+        message: "Created successfully",
+        recipe,
+      });
     } catch (err) {
       res.status(500).json({ message: err.message });
     }
-});
+  }
+);
+
 
 // ================= UPDATE =================
-router.put("/:id", authMiddleware, roleMiddleware("admin"), upload.single("image"), async (req, res) => {
+// router.put("/:id", authMiddleware, roleMiddleware("admin"), upload.single("image"), async (req, res) => {
+//     try {
+//       const updateData = { ...req.body };
+//       if (req.body.ingredients && typeof req.body.ingredients === "string") {
+//         updateData.ingredients = req.body.ingredients.split(",").map(i => i.trim());
+//       }
+//       if (req.file) {
+//         updateData.CoverImage = `/images/${req.file.filename}`;
+//       }
+
+//       const updated = await Recipe.findByIdAndUpdate(req.params.id, updateData, { new: true });
+
+//       // 🔥 إرسال التحديث
+//       const io = getIo(req);
+//       if (io) io.emit("recipeUpdated", updated);
+
+//       res.json({ message: "Updated", recipe: updated });
+//     } catch (err) {
+//       res.status(500).json({ message: err.message });
+//     }
+// });
+
+router.put(
+  "/:id",
+  authMiddleware,
+  roleMiddleware("admin"),
+  upload.single("image"),
+  async (req, res) => {
     try {
       const updateData = { ...req.body };
-      if (req.body.ingredients && typeof req.body.ingredients === "string") {
-        updateData.ingredients = req.body.ingredients.split(",").map(i => i.trim());
+
+      // ================= INGREDIENTS =================
+      if (typeof req.body.ingredients === "string") {
+        updateData.ingredients = req.body.ingredients
+          .split(",")
+          .map((i) => i.trim())
+          .filter(Boolean);
       }
+
+      // ================= VARIANTS FIX (IMPORTANT) =================
+      if (req.body.variants) {
+        try {
+          updateData.variants =
+            typeof req.body.variants === "string"
+              ? JSON.parse(req.body.variants)
+              : req.body.variants;
+        } catch (err) {
+          return res.status(400).json({
+            message: "Invalid variants format (must be JSON)",
+          });
+        }
+      }
+
+      // ================= IMAGE =================
       if (req.file) {
         updateData.CoverImage = `/images/${req.file.filename}`;
       }
 
-      const updated = await Recipe.findByIdAndUpdate(req.params.id, updateData, { new: true });
+      // ================= UPDATE =================
+      const updated = await Recipe.findByIdAndUpdate(
+        req.params.id,
+        updateData,
+        {
+          new: true,
+          runValidators: true,
+        }
+      );
 
-      // 🔥 إرسال التحديث
+      if (!updated) {
+        return res.status(404).json({ message: "Recipe not found" });
+      }
+
+      // ================= SOCKET =================
       const io = getIo(req);
       if (io) io.emit("recipeUpdated", updated);
 
-      res.json({ message: "Updated", recipe: updated });
+      res.json({
+        message: "Updated successfully",
+        recipe: updated,
+      });
     } catch (err) {
       res.status(500).json({ message: err.message });
     }
-});
+  }
+);
 
 // ================= DELETE =================
 router.delete("/:id", authMiddleware, roleMiddleware("admin"), async (req, res) => {

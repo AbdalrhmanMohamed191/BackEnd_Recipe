@@ -3,6 +3,8 @@ const router = express.Router();
 const Order = require("../models/order");
 const { authMiddleware } = require("../middleWares/authMiddleware");
 const User = require("../models/userSchema");
+const Recipe = require("../models/recipeSchema");
+
 
 
 // ================= CREATE ORDER =================
@@ -44,10 +46,71 @@ const User = require("../models/userSchema");
 //   }
 // });
 
+// router.post("/create", authMiddleware, async (req, res) => {
+//   try {
+//     const { items, address } = req.body;
+//     // validation
+//     if (!Array.isArray(items) || items.length === 0) {
+//       return res.status(400).json({ message: "Cart is empty" });
+//     }
+
+//     if (!address?.street || !address?.city) {
+//       return res.status(400).json({ message: "Address is required" });
+//     }
+
+//     //  CALCULATE TOTAL 
+//     const subtotal = items.reduce(
+//       (sum, item) => sum + item.price * item.quantity,
+//       0
+//     );
+//     const deliveryFee = 15; 
+//     //  CALCULATE TOTAL 
+//     const totalPrice = subtotal + deliveryFee;
+
+//     // CREATE ORDER
+//     const order = await Order.create({
+//       userId: req.user._id,
+//       items,
+//       totalPrice,
+//       phone : req.user.phone,
+//       status: "pending",
+//       address,
+//       deliveryFee,
+//     });
+
+//     const fullOrder = await Order.findById(order._id).populate(
+//       "userId",
+//       "name phone"
+//     );
+
+//     // SOCKET
+//     const io = req.app.get("io");
+
+//     if (io) {
+//       io.to(req.user._id.toString()).emit("orderCreated", fullOrder);
+//       io.to("adminRoom").emit("orderCreated", fullOrder);
+//     }
+
+//     // RESPONSE
+//     res.status(201).json(fullOrder);
+
+//   } catch (err) {
+//     console.log("CREATE ORDER ERROR:", err);
+//     res.status(500).json({ message: err.message });
+//   }
+// });
+
+
+
+
+
+// ================= GET MY ORDERS =================
+
 router.post("/create", authMiddleware, async (req, res) => {
   try {
-    const { items, address } = req.body;
-    // validation
+    const { items, address, paymentMethod } = req.body;
+
+    // ================= VALIDATION =================
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ message: "Cart is empty" });
     }
@@ -56,24 +119,66 @@ router.post("/create", authMiddleware, async (req, res) => {
       return res.status(400).json({ message: "Address is required" });
     }
 
-    //  CALCULATE TOTAL 
-    const subtotal = items.reduce(
-      (sum, item) => sum + item.price * item.quantity,
-      0
-    );
-    const deliveryFee = 15; 
-    //  CALCULATE TOTAL 
+    // ================= PROCESS ITEMS =================
+    let processedItems = [];
+
+    for (const item of items) {
+      const product = await Recipe.findById(item.productId);
+      if (!product) continue;
+
+      // 🔥 نجيب الـ variant من الداتابيز
+      let selectedVariant = null;
+
+      if (item.variant?.name) {
+        selectedVariant = product.variants.find(
+          (v) => v.name === item.variant.name
+        );
+      }
+
+      // fallback لو مفيش variant
+      const price = selectedVariant
+        ? selectedVariant.price
+        : product.price || 0;
+
+      processedItems.push({
+        productId: product._id,
+        title: product.title,
+        variant: selectedVariant
+          ? {
+              name: selectedVariant.name,
+              price: selectedVariant.price,
+            }
+          : null,
+        quantity: item.quantity || 1,
+      });
+    }
+
+    if (processedItems.length === 0) {
+      return res.status(400).json({
+        message: "No valid products in order",
+      });
+    }
+
+    // ================= CALCULATE =================
+    const subtotal = processedItems.reduce((sum, item) => {
+      const price = item.variant?.price || 0;
+      return sum + price * item.quantity;
+    }, 0);
+
+    const deliveryFee = 15;
     const totalPrice = subtotal + deliveryFee;
 
-    // CREATE ORDER
+    // ================= CREATE =================
     const order = await Order.create({
       userId: req.user._id,
-      items,
+      name: req.user.name,
+      phone: req.user.phone,
+      items: processedItems,
       totalPrice,
-      phone : req.user.phone,
-      status: "pending",
-      address,
       deliveryFee,
+      paymentMethod: paymentMethod || "cash",
+      isPaid: paymentMethod === "card",
+      address,
     });
 
     const fullOrder = await Order.findById(order._id).populate(
@@ -81,15 +186,13 @@ router.post("/create", authMiddleware, async (req, res) => {
       "name phone"
     );
 
-    // SOCKET
+    // ================= SOCKET =================
     const io = req.app.get("io");
-
     if (io) {
       io.to(req.user._id.toString()).emit("orderCreated", fullOrder);
       io.to("adminRoom").emit("orderCreated", fullOrder);
     }
 
-    // RESPONSE
     res.status(201).json(fullOrder);
 
   } catch (err) {
@@ -99,7 +202,6 @@ router.post("/create", authMiddleware, async (req, res) => {
 });
 
 
-// ================= GET MY ORDERS =================
 router.get("/myorders", authMiddleware, async (req, res) => {
   try {
     const orders = await Order.find({ userId: req.user._id })

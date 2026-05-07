@@ -21,6 +21,19 @@ const recipeSchema = new mongoose.Schema({
         type: Number,
         required: false
     },
+     variants: [
+        {
+            name: {
+                type: String, // Small / Large / XL / Roll / Cone
+                required: true
+            },
+            price: {
+                type: Number,
+                required: true
+            }
+        }
+    ],
+    
     category: {
         type: String,
         required: false,

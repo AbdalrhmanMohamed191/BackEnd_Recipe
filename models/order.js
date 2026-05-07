@@ -15,13 +15,19 @@ const orderSchema = new mongoose.Schema({
   required: false
 },
   items: [
-    {
-      _id: String,
-      title: String,
-      price: Number,
-      quantity: Number,
+  {
+    productId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Recipe",
     },
-  ],
+    title: String,
+    variant: {
+      name: String,
+      price: Number,
+    },
+    quantity: Number,
+  },
+],
   status: {
     type: String,
     enum: ["pending", "preparing", "delivered", "cancelled"],
