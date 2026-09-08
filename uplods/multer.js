@@ -20,11 +20,35 @@
 // module.exports = upload;
 
 
+// const multer = require("multer");
+// const path = require("path");
+// const fs = require("fs");
+
+// const dir = "public/images";
+
+// if (!fs.existsSync(dir)) {
+//   fs.mkdirSync(dir, { recursive: true });
+// }
+
+// const storage = multer.diskStorage({
+//   destination: (req, file, cb) => {
+//     cb(null, dir);
+//   },
+
+//   filename: (req, file, cb) => {
+//     const unique = Date.now() + "-" + Math.round(Math.random() * 1e9);
+//     cb(null, unique + path.extname(file.originalname));
+//   },
+// });
+
+// module.exports = multer({ storage });
+
+
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
 
-const dir = "public/images";
+const dir = path.join(process.cwd(), "public", "images");
 
 if (!fs.existsSync(dir)) {
   fs.mkdirSync(dir, { recursive: true });
@@ -36,7 +60,9 @@ const storage = multer.diskStorage({
   },
 
   filename: (req, file, cb) => {
-    const unique = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    const unique =
+      Date.now() + "-" + Math.round(Math.random() * 1e9);
+
     cb(null, unique + path.extname(file.originalname));
   },
 });
