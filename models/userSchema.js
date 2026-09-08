@@ -23,9 +23,14 @@ const userSchema = new mongoose.Schema({
     },
     role: {
         type: String,
-        enum: ['user', 'admin'],
+        enum: ['user', 'admin', 'restaurantOwner'],
         default: 'user'
-    }
+    },
+    restaurantId: {
+  type: mongoose.Schema.Types.ObjectId,
+  ref: "Restaurant",
+  default: null
+}
 }, {
     timestamps: true
 });

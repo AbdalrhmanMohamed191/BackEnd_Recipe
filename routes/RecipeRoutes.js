@@ -1,123 +1,237 @@
 const express = require("express");
 const router = express.Router();
+
 const Recipe = require("../models/recipeSchema");
+const Restaurant = require("../models/Restaurant");
+
 const upload = require("../uplods/multer");
+
 const { authMiddleware } = require("../middleWares/authMiddleware");
 const { roleMiddleware } = require("../middleWares/roleMiddleware");
 
-// ✅ التعديل هنا: نستخدم "io" ليتطابق مع app.set("io", io) في server.js
 const getIo = (req) => req.app.get("io");
 
-// CREATE
-// router.post("/", authMiddleware, roleMiddleware("admin"), upload.single("image"), async (req, res) => {
+
+// =================================================
+// CREATE RECIPE
+// ADMIN + RESTAURANT OWNER
+// =================================================
+
+// router.post(
+//   "/",
+//   authMiddleware,
+//   roleMiddleware("admin", "restaurantOwner"),
+//   upload.single("image"),
+//   async (req, res) => {
 //     try {
-//       const { title, instructions, price, category } = req.body;
-//       if (!title || !instructions || !price) return res.status(400).json({ message: "Missing fields" });
-//       if (!req.file) return res.status(400).json({ message: "Image required" });
-
-//       let ingredients = [];
-//       if (typeof req.body.ingredients === "string") {
-//         ingredients = req.body.ingredients.split(",").map(i => i.trim());
-//       } else {
-//         ingredients = req.body.ingredients || [];
-//       }
-
-//       const recipe = new Recipe({
+//       const {
 //         title,
 //         instructions,
-//         price,
+//         category,
+//         restaurantId: bodyRestaurantId,
+//       } = req.body;
+
+//       // ================= RESTAURANT ID =================
+
+//       const restaurantId =
+//         req.user.role === "restaurantOwner"
+//           ? req.user.restaurantId
+//           : bodyRestaurantId;
+
+//       if (!title || !instructions || !restaurantId) {
+//         return res.status(400).json({
+//           message: "Title, instructions and restaurant are required",
+//         });
+//       }
+
+//       // ================= CHECK RESTAURANT =================
+
+//       const restaurant = await Restaurant.findById(restaurantId);
+
+//       if (!restaurant) {
+//         return res.status(404).json({
+//           message: "Restaurant not found",
+//         });
+//       }
+
+//       // ================= IMAGE =================
+
+//       if (!req.file) {
+//         return res.status(400).json({
+//           message: "Image is required",
+//         });
+//       }
+
+//       // ================= INGREDIENTS =================
+
+//       let ingredients = [];
+
+//       if (req.body.ingredients) {
+//         ingredients =
+//           typeof req.body.ingredients === "string"
+//             ? req.body.ingredients
+//                 .split(",")
+//                 .map((item) => item.trim())
+//                 .filter(Boolean)
+//             : req.body.ingredients;
+//       }
+
+//       // ================= VARIANTS =================
+
+//       let variants = [];
+
+//       if (req.body.variants) {
+//         try {
+//           variants =
+//             typeof req.body.variants === "string"
+//               ? JSON.parse(req.body.variants)
+//               : req.body.variants;
+
+//           if (!Array.isArray(variants)) {
+//             variants = [];
+//           }
+
+//           variants = variants.map((variant) => ({
+//             name: variant.name?.trim(),
+//             price: Number(variant.price),
+//           }));
+
+//         } catch {
+//           return res.status(400).json({
+//             message: "Invalid variants format",
+//           });
+//         }
+//       }
+
+//       // ================= CREATE =================
+
+//       const recipe = await Recipe.create({
+//         title,
+//         instructions,
 //         category,
 //         ingredients,
+//         variants,
+//         restaurantId,
+//         ownerId: req.user._id,
 //         CoverImage: `/images/${req.file.filename}`,
 //       });
 
-//       await recipe.save();
+//       // ================= SOCKET =================
 
-//       const created = await Recipe.findById(recipe._id).populate("category");
-//       // 🔥 إرسال الإشارة بالاسم الصحيح
 //       const io = getIo(req);
-//       if (io) io.emit("recipeCreated", recipe || created);
 
-//       return res.status(201).json({ message: "Created", recipe });
+//       if (io) {
+//         io.emit("recipeCreated", recipe);
+//       }
+
+//       res.status(201).json({
+//         message: "Recipe created successfully",
+//         recipe,
+//       });
+
 //     } catch (err) {
-//       res.status(500).json({ message: err.message });
+//       console.error("CREATE RECIPE ERROR:", err);
+
+//       res.status(500).json({
+//         message: err.message,
+//       });
 //     }
-// });
-
-
-// router.post("/", authMiddleware, roleMiddleware("admin"), upload.single("image"), async (req, res) => {
-//   try {
-//     const { title, instructions, category } = req.body;
-
-//     if (!title || !instructions) {
-//       return res.status(400).json({ message: "Missing fields" });
-//     }
-
-//     if (!req.file) {
-//       return res.status(400).json({ message: "Image required" });
-//     }
-
-//     let ingredients = [];
-//     if (typeof req.body.ingredients === "string") {
-//       ingredients = req.body.ingredients.split(",").map(i => i.trim());
-//     }
-
-//     // 🔥 أهم جزء
-//     let variants = [];
-//     if (req.body.variants) {
-//       variants = JSON.parse(req.body.variants); 
-//       // لازم تبعتها من الفرونت JSON string
-//     }
-
-//     const recipe = new Recipe({
-//       title,
-//       instructions,
-//       category,
-//       ingredients,
-//       variants,
-//       CoverImage: `/images/${req.file.filename}`,
-//     });
-
-//     await recipe.save();
-
-//     const io = getIo(req);
-//     if (io) io.emit("recipeCreated", recipe);
-
-//     res.status(201).json({ message: "Created", recipe });
-
-//   } catch (err) {
-//     res.status(500).json({ message: err.message });
 //   }
-// });
+// );
+
 
 router.post(
   "/",
   authMiddleware,
-  roleMiddleware("admin"),
+  roleMiddleware("admin", "restaurantOwner"),
   upload.single("image"),
   async (req, res) => {
     try {
-      const { title, instructions, category } = req.body;
+      const {
+        title,
+        instructions,
+        category,
+        restaurantId: bodyRestaurantId,
+      } = req.body;
 
-      if (!title || !instructions) {
-        return res.status(400).json({ message: "Missing fields" });
+      // ================= RESTAURANT ID =================
+
+      const restaurantId =
+        req.user.role === "restaurantOwner"
+          ? req.user.restaurantId
+          : bodyRestaurantId;
+
+      if (!title || !instructions || !restaurantId) {
+        return res.status(400).json({
+          message: "Title, instructions and restaurant are required",
+        });
       }
 
+      // ================= CHECK RESTAURANT =================
+
+      const restaurant = await Restaurant.findById(restaurantId);
+
+      if (!restaurant) {
+        return res.status(404).json({
+          message: "Restaurant not found",
+        });
+      }
+
+      // ================= IMAGE =================
+
       if (!req.file) {
-        return res.status(400).json({ message: "Image required" });
+        return res.status(400).json({
+          message: "Image is required",
+        });
       }
 
       // ================= INGREDIENTS =================
+
       let ingredients = [];
 
-      if (typeof req.body.ingredients === "string") {
-        ingredients = req.body.ingredients
-          .split(",")
-          .map((i) => i.trim())
-          .filter(Boolean);
+      if (req.body.ingredients) {
+        try {
+          ingredients =
+            typeof req.body.ingredients === "string"
+              ? JSON.parse(req.body.ingredients)
+              : req.body.ingredients;
+
+          // لو بعت String عادي بدل JSON Array
+          if (!Array.isArray(ingredients)) {
+            ingredients = [String(ingredients)];
+          }
+
+          ingredients = ingredients
+            .map((item) => String(item).trim())
+            .filter(Boolean);
+
+        } catch {
+          // fallback لو كانت بالشكل:
+          // Zinger Chicken, Cheese, Sauce
+
+          ingredients = req.body.ingredients
+            .split(",")
+            .map((item) => item.trim())
+            .filter(Boolean);
+        }
       }
 
-      // ================= VARIANTS FIX (IMPORTANT) =================
+      // ================= PRICE =================
+
+      const price =
+        req.body.price !== undefined &&
+        req.body.price !== ""
+          ? Number(req.body.price)
+          : 0;
+
+      if (Number.isNaN(price) || price < 0) {
+        return res.status(400).json({
+          message: "Invalid price",
+        });
+      }
+
+      // ================= VARIANTS =================
+
       let variants = [];
 
       if (req.body.variants) {
@@ -126,151 +240,389 @@ router.post(
             typeof req.body.variants === "string"
               ? JSON.parse(req.body.variants)
               : req.body.variants;
-        } catch (err) {
+
+          if (!Array.isArray(variants)) {
+            variants = [];
+          }
+
+          variants = variants
+            .map((variant) => ({
+              name: variant.name?.trim(),
+              price: Number(variant.price),
+            }))
+            .filter(
+              (variant) =>
+                variant.name &&
+                !Number.isNaN(variant.price) &&
+                variant.price >= 0
+            );
+
+        } catch {
           return res.status(400).json({
-            message: "Invalid variants format (must be JSON)",
+            message: "Invalid variants format",
           });
         }
       }
 
       // ================= CREATE =================
-      const recipe = new Recipe({
+
+      const recipe = await Recipe.create({
         title,
         instructions,
         category,
         ingredients,
-        variants: variants || [],
+        price,
+        variants,
+        restaurantId,
+        ownerId: req.user._id,
         CoverImage: `/images/${req.file.filename}`,
       });
 
-      await recipe.save();
-
       // ================= SOCKET =================
+
       const io = getIo(req);
-      if (io) io.emit("recipeCreated", recipe);
+
+      if (io) {
+        io.emit("recipeCreated", recipe);
+      }
+
+      // ================= RESPONSE =================
 
       res.status(201).json({
-        message: "Created successfully",
+        message: "Recipe created successfully",
         recipe,
       });
+
     } catch (err) {
-      res.status(500).json({ message: err.message });
+      console.error("CREATE RECIPE ERROR:", err);
+
+      res.status(500).json({
+        message: err.message,
+      });
     }
   }
 );
 
 
-// ================= UPDATE =================
-// router.put("/:id", authMiddleware, roleMiddleware("admin"), upload.single("image"), async (req, res) => {
-//     try {
-//       const updateData = { ...req.body };
-//       if (req.body.ingredients && typeof req.body.ingredients === "string") {
-//         updateData.ingredients = req.body.ingredients.split(",").map(i => i.trim());
-//       }
-//       if (req.file) {
-//         updateData.CoverImage = `/images/${req.file.filename}`;
-//       }
 
-//       const updated = await Recipe.findByIdAndUpdate(req.params.id, updateData, { new: true });
+// =================================================
+// GET ALL RECIPES
+// PUBLIC
+// =================================================
 
-//       // 🔥 إرسال التحديث
-//       const io = getIo(req);
-//       if (io) io.emit("recipeUpdated", updated);
+router.get("/", async (req, res) => {
+  try {
+    const {
+      restaurantId,
+      category,
+    } = req.query;
 
-//       res.json({ message: "Updated", recipe: updated });
-//     } catch (err) {
-//       res.status(500).json({ message: err.message });
-//     }
-// });
+    const filter = {};
+
+    if (restaurantId) {
+      filter.restaurantId = restaurantId;
+    }
+
+    if (category) {
+      filter.category = category;
+    }
+
+    const recipes = await Recipe.find(filter)
+      .populate("restaurantId", "name")
+      .sort({ createdAt: -1 });
+
+    res.json(recipes);
+
+  } catch (err) {
+    res.status(500).json({
+      message: err.message,
+    });
+  }
+});
+
+
+// =================================================
+// GET MY MENU
+// RESTAURANT OWNER ONLY
+// =================================================
+
+router.get(
+  "/my-menu",
+  authMiddleware,
+  roleMiddleware("restaurantOwner"),
+  async (req, res) => {
+    try {
+
+      if (!req.user.restaurantId) {
+        return res.status(400).json({
+          message: "Restaurant not assigned",
+        });
+      }
+
+      const recipes = await Recipe.find({
+        restaurantId: req.user.restaurantId,
+      })
+        .sort({ createdAt: -1 });
+
+      res.json(recipes);
+
+    } catch (err) {
+      res.status(500).json({
+        message: err.message,
+      });
+    }
+  }
+);
+
+
+// =================================================
+// GET RECIPES BY RESTAURANT
+// PUBLIC
+// =================================================
+
+router.get("/restaurant/:id", async (req, res) => {
+  try {
+
+    const recipes = await Recipe.find({
+      restaurantId: req.params.id,
+    })
+      .sort({ createdAt: -1 })
+      .populate("restaurantId", "name");
+
+    res.json(recipes);
+
+  } catch (err) {
+    res.status(500).json({
+      message: err.message,
+    });
+  }
+});
+
+
+// =================================================
+// GET ONE RECIPE
+// PUBLIC
+// =================================================
+
+router.get("/:id", async (req, res) => {
+  try {
+
+    const recipe = await Recipe.findById(req.params.id)
+      .populate("restaurantId", "name");
+
+    if (!recipe) {
+      return res.status(404).json({
+        message: "Recipe not found",
+      });
+    }
+
+    res.json(recipe);
+
+  } catch (err) {
+    res.status(500).json({
+      message: err.message,
+    });
+  }
+});
+
+
+// =================================================
+// UPDATE RECIPE
+// ADMIN + RESTAURANT OWNER
+// =================================================
 
 router.put(
   "/:id",
   authMiddleware,
-  roleMiddleware("admin"),
+  roleMiddleware("admin", "restaurantOwner"),
   upload.single("image"),
   async (req, res) => {
     try {
-      const updateData = { ...req.body };
 
-      // ================= INGREDIENTS =================
-      if (typeof req.body.ingredients === "string") {
-        updateData.ingredients = req.body.ingredients
-          .split(",")
-          .map((i) => i.trim())
-          .filter(Boolean);
+      const recipe = await Recipe.findById(req.params.id);
+
+      if (!recipe) {
+        return res.status(404).json({
+          message: "Recipe not found",
+        });
       }
 
-      // ================= VARIANTS FIX (IMPORTANT) =================
-      if (req.body.variants) {
+      // ================= OWNER ACCESS =================
+
+      if (req.user.role === "restaurantOwner") {
+
+        if (!req.user.restaurantId) {
+          return res.status(403).json({
+            message: "Restaurant not assigned",
+          });
+        }
+
+        if (
+          recipe.restaurantId.toString() !==
+          req.user.restaurantId.toString()
+        ) {
+          return res.status(403).json({
+            message: "Not allowed",
+          });
+        }
+      }
+
+      // ================= UPDATE ONLY ALLOWED FIELDS =================
+
+      if (req.body.title !== undefined) {
+        recipe.title = req.body.title;
+      }
+
+      if (req.body.instructions !== undefined) {
+        recipe.instructions = req.body.instructions;
+      }
+
+      if (req.body.category !== undefined) {
+        recipe.category = req.body.category;
+      }
+
+      if (req.body.price !== undefined) {
+        recipe.price = Number(req.body.price);
+      }
+
+      // ================= INGREDIENTS =================
+
+      if (req.body.ingredients !== undefined) {
+
+        recipe.ingredients =
+          typeof req.body.ingredients === "string"
+            ? req.body.ingredients
+                .split(",")
+                .map((item) => item.trim())
+                .filter(Boolean)
+            : req.body.ingredients;
+      }
+
+      // ================= VARIANTS =================
+
+      if (req.body.variants !== undefined) {
+
         try {
-          updateData.variants =
+
+          let variants =
             typeof req.body.variants === "string"
               ? JSON.parse(req.body.variants)
               : req.body.variants;
-        } catch (err) {
+
+          if (!Array.isArray(variants)) {
+            variants = [];
+          }
+
+          recipe.variants = variants.map((variant) => ({
+            name: variant.name?.trim(),
+            price: Number(variant.price),
+          }));
+
+        } catch {
+
           return res.status(400).json({
-            message: "Invalid variants format (must be JSON)",
+            message: "Invalid variants format",
           });
         }
       }
 
       // ================= IMAGE =================
+
       if (req.file) {
-        updateData.CoverImage = `/images/${req.file.filename}`;
+        recipe.CoverImage = `/images/${req.file.filename}`;
       }
 
-      // ================= UPDATE =================
-      const updated = await Recipe.findByIdAndUpdate(
-        req.params.id,
-        updateData,
-        {
-          new: true,
-          runValidators: true,
-        }
-      );
-
-      if (!updated) {
-        return res.status(404).json({ message: "Recipe not found" });
-      }
+      await recipe.save();
 
       // ================= SOCKET =================
+
       const io = getIo(req);
-      if (io) io.emit("recipeUpdated", updated);
+
+      if (io) {
+        io.emit("recipeUpdated", recipe);
+      }
 
       res.json({
-        message: "Updated successfully",
-        recipe: updated,
+        message: "Recipe updated successfully",
+        recipe,
       });
+
     } catch (err) {
-      res.status(500).json({ message: err.message });
+
+      console.error("UPDATE RECIPE ERROR:", err);
+
+      res.status(500).json({
+        message: err.message,
+      });
     }
   }
 );
 
-// ================= DELETE =================
-router.delete("/:id", authMiddleware, roleMiddleware("admin"), async (req, res) => {
+
+// =================================================
+// DELETE RECIPE
+// ADMIN + RESTAURANT OWNER
+// =================================================
+
+router.delete(
+  "/:id",
+  authMiddleware,
+  roleMiddleware("admin", "restaurantOwner"),
+  async (req, res) => {
     try {
+
+      const recipe = await Recipe.findById(req.params.id);
+
+      if (!recipe) {
+        return res.status(404).json({
+          message: "Recipe not found",
+        });
+      }
+
+      // ================= OWNER ACCESS =================
+
+      if (req.user.role === "restaurantOwner") {
+
+        if (!req.user.restaurantId) {
+          return res.status(403).json({
+            message: "Restaurant not assigned",
+          });
+        }
+
+        if (
+          recipe.restaurantId.toString() !==
+          req.user.restaurantId.toString()
+        ) {
+          return res.status(403).json({
+            message: "Not allowed",
+          });
+        }
+      }
+
       await Recipe.findByIdAndDelete(req.params.id);
 
-      // 🔥 إرسال الحذف
+      // ================= SOCKET =================
+
       const io = getIo(req);
-      if (io) io.emit("recipeDeleted", req.params.id);
 
-      res.json({ message: "Deleted" });
+      if (io) {
+        io.emit("recipeDeleted", req.params.id);
+      }
+
+      res.json({
+        message: "Recipe deleted successfully",
+      });
+
     } catch (err) {
-      res.status(500).json({ message: err.message });
+
+      console.error("DELETE RECIPE ERROR:", err);
+
+      res.status(500).json({
+        message: err.message,
+      });
     }
-});
+  }
+);
 
-// GET ALL & GET ONE تبقى كما هي...
-router.get("/", async (req, res) => {
-  const recipes = await Recipe.find().sort({ createdAt: -1 });
-  res.json(recipes);
-});
-
-router.get("/:id", async (req, res) => {
-  const recipe = await Recipe.findById(req.params.id);
-  res.json(recipe);
-});
 
 module.exports = router;

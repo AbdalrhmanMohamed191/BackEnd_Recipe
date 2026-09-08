@@ -1,50 +1,78 @@
-const mongoose = require('mongoose');
+const mongoose = require("mongoose");
 
-const recipeSchema = new mongoose.Schema({
+const recipeSchema = new mongoose.Schema(
+  {
     title: {
-        type: String,
-        required: true
+      type: String,
+      required: true,
+      trim: true,
     },
-    ingredients: {
-        type: [String],
-        required: true
-    },
-    instructions: {
-        type: String,
-        required: true
-    },
-    CoverImage: {
-        type: String,
-        required: false
-    },
-    price: {
-        type: Number,
-        required: false
-    },
-     variants: [
-        {
-            name: {
-                type: String, // Small / Large / XL / Roll / Cone
-                required: true
-            },
-            price: {
-                type: Number,
-                required: true
-            }
-        }
-    ],
-    
-    category: {
-        type: String,
-        required: false,
-        enum: ['beef', 'chicken', 'pizza', 'dessert', 'seafood', 'pasta', 'salad', 'soup','burger','drinks']
-    }
-}
-,{
-    timestamps: true
-});
 
-const Recipe = mongoose.model('Recipe', recipeSchema);
+    ingredients: {
+      type: [String],
+      required: true,
+      default: [],
+    },
+
+    instructions: {
+      type: String,
+      required: true,
+    },
+
+    CoverImage: {
+      type: String,
+    },
+
+    price: {
+      type: Number,
+      default: 0,
+    },
+
+    restaurantId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Restaurant",
+      required: true,
+    },
+
+    ownerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+
+    variants: [
+      {
+        name: {
+          type: String, // Small / Large / XL
+          required: true,
+        },
+        price: {
+          type: Number,
+          required: true,
+        },
+      },
+    ],
+
+    category: {
+      type: String,
+      enum: [
+        "beef",
+        "chicken",
+        "pizza",
+        "dessert",
+        "seafood",
+        "pasta",
+        "salad",
+        "soup",
+        "burger",
+        "drinks",
+        "crepe",
+      ],
+    },
+  },
+  { timestamps: true }
+);
+
+const Recipe = mongoose.model("Recipe", recipeSchema);
 
 module.exports = Recipe;
-    

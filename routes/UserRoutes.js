@@ -8,6 +8,7 @@ const { authMiddleware } = require('../middleWares/authMiddleware');
 
 
 
+
 // Register
 router.post('/register', async (req, res) => {
     try {
@@ -87,7 +88,7 @@ router.post('/signin', async (req, res) => {
 });
 
 // Get all users
-router.get('/', async (req, res) => {
+router.get('/', authMiddleware , async (req, res) => {
     try {
         const users = await User.find();
         res.status(200).json(users);
@@ -100,7 +101,7 @@ router.get('/', async (req, res) => {
 
 // Get user by ID (ME)
 
-router.get('/me', authMiddleware, async (req, res) => {
+router.get('/me', authMiddleware ,  async (req, res) => {
     try {
         const user = await User.findById(req.user._id).select('-password');
 
@@ -116,7 +117,7 @@ router.get('/me', authMiddleware, async (req, res) => {
 
 
     // Get user by ID
-router.get('/:id', async (req, res) => {
+router.get('/:id' , authMiddleware , async (req, res) => {
     try {
         const user = await User.findById(req.params.id);
 
@@ -132,7 +133,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // Delete user by ID
-router.delete('/:id', async (req, res) => {
+router.delete('/:id' , authMiddleware  , async (req, res) => {
     try {
         const user = await User.findByIdAndDelete(req.params.id);
 

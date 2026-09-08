@@ -75,6 +75,7 @@ app.use("/api/v1/contact", require("./routes/contactRoutes"));
 app.use("/api/v1/book", require("./routes/bookingRoutes"));
 // app.use("/api/v1/offers", require("./routes/offersRoutes"));
 app.use("/api/v1/offers", require("./routes/offersRoutes"));
+app.use("/api/v1/restaurants", require("./routes/restaurantRoutes"));
 
 // =====================
 // DB
