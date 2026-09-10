@@ -67,6 +67,7 @@ const recipeSchema = new mongoose.Schema(
         "burger",
         "drinks",
         "crepe",
+        "dishes",
       ],
     },
   },
