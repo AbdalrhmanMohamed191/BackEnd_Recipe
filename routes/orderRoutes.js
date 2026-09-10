@@ -608,7 +608,7 @@ router.post("/create", authMiddleware, async (req, res) => {
     // DELIVERY
     // =====================================================
 
-    const deliveryFee = 15;
+    const deliveryFee = 0;
 
     // =====================================================
     // TOTAL

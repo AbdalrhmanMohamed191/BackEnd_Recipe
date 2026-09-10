@@ -177,7 +177,7 @@ const orderSchema = new mongoose.Schema(
     deliveryFee: {
       type: Number,
 
-      default: 15,
+      default: 0,
     },
 
     // =====================================================
