@@ -188,6 +188,191 @@ router.post(
   }
 );
 
+// =================================================
+// BULK CREATE RECIPES
+// ADMIN ONLY
+// NO IMAGES REQUIRED
+// =================================================
+
+router.post(
+  "/bulk",
+  authMiddleware,
+  roleMiddleware("admin"),
+  async (req, res) => {
+    try {
+      const { recipes } = req.body;
+
+      if (!Array.isArray(recipes) || recipes.length === 0) {
+        return res.status(400).json({
+          message: "Recipes array is required",
+        });
+      }
+
+      // ================= VALIDATE RESTAURANTS =================
+
+      const restaurantIds = [
+        ...new Set(
+          recipes
+            .map((recipe) => recipe.restaurantId)
+            .filter(Boolean)
+        ),
+      ];
+
+      const restaurants = await Restaurant.find({
+        _id: { $in: restaurantIds },
+      }).select("_id");
+
+      const validRestaurantIds = new Set(
+        restaurants.map((restaurant) =>
+          restaurant._id.toString()
+        )
+      );
+
+      // ================= PREPARE RECIPES =================
+
+      const recipesToInsert = [];
+
+      for (const item of recipes) {
+        const {
+          title,
+          ingredients,
+          instructions,
+          category,
+          price,
+          variants,
+          restaurantId,
+        } = item;
+
+        // Required fields
+        if (
+          !title ||
+          !instructions ||
+          !restaurantId
+        ) {
+          return res.status(400).json({
+            message:
+              "Each recipe must have title, instructions and restaurantId",
+            recipe: item,
+          });
+        }
+
+        // Check restaurant
+        if (!validRestaurantIds.has(String(restaurantId))) {
+          return res.status(400).json({
+            message: `Restaurant not found: ${restaurantId}`,
+          });
+        }
+
+        // ================= INGREDIENTS =================
+
+        let parsedIngredients = [];
+
+        if (Array.isArray(ingredients)) {
+          parsedIngredients = ingredients;
+        } else if (typeof ingredients === "string") {
+          parsedIngredients = ingredients
+            .split(",")
+            .map((item) => item.trim())
+            .filter(Boolean);
+        }
+
+        parsedIngredients = parsedIngredients
+          .map((item) => String(item).trim())
+          .filter(Boolean);
+
+        // ================= PRICE =================
+
+        const parsedPrice =
+          price !== undefined &&
+          price !== ""
+            ? Number(price)
+            : 0;
+
+        if (
+          Number.isNaN(parsedPrice) ||
+          parsedPrice < 0
+        ) {
+          return res.status(400).json({
+            message: `Invalid price for recipe: ${title}`,
+          });
+        }
+
+        // ================= VARIANTS =================
+
+        let parsedVariants = [];
+
+        if (Array.isArray(variants)) {
+          parsedVariants = variants
+            .map((variant) => ({
+              name: variant.name?.trim(),
+              price: Number(variant.price),
+            }))
+            .filter(
+              (variant) =>
+                variant.name &&
+                !Number.isNaN(variant.price) &&
+                variant.price >= 0
+            );
+        }
+
+        // ================= PUSH =================
+
+        recipesToInsert.push({
+          title: String(title).trim(),
+          instructions: String(instructions).trim(),
+          category: category || undefined,
+          ingredients: parsedIngredients,
+          price: parsedPrice,
+          variants: parsedVariants,
+          restaurantId,
+          ownerId: req.user._id,
+
+          // NO IMAGE
+          CoverImage: "",
+        });
+      }
+
+      // ================= INSERT MANY =================
+
+      const createdRecipes =
+        await Recipe.insertMany(
+          recipesToInsert
+        );
+
+      // ================= SOCKET =================
+
+      const io = getIo(req);
+
+      if (io) {
+        createdRecipes.forEach((recipe) => {
+          io.emit(
+            "recipeCreated",
+            recipe
+          );
+        });
+      }
+
+      // ================= RESPONSE =================
+
+      res.status(201).json({
+        message: `${createdRecipes.length} recipes imported successfully`,
+        count: createdRecipes.length,
+        recipes: createdRecipes,
+      });
+
+    } catch (err) {
+      console.error(
+        "BULK CREATE RECIPES ERROR:",
+        err
+      );
+
+      res.status(500).json({
+        message: err.message,
+      });
+    }
+  }
+);
+
 
 // =================================================
 // GET ALL RECIPES
