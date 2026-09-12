@@ -199,6 +199,11 @@ app.use(
   require("./routes/restaurantRoutes")
 );
 
+app.use(
+  "/api/v1/loyalty",
+  require("./routes/loyaltyRoutes")
+);
+
 // =====================================================
 // ROOT ROUTE
 // =====================================================

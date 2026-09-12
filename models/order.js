@@ -144,6 +144,21 @@ const orderSchema = new mongoose.Schema(
       default: "pending",
     },
 
+      // =====================================================
+      // LOYALTY POINTS
+      // =====================================================
+
+      loyaltyPointsEarned: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
+
+      loyaltyPointsCredited: {
+        type: Boolean,
+        default: false,
+      },
+
     // =====================================================
     // PAYMENT
     // =====================================================
@@ -178,6 +193,38 @@ const orderSchema = new mongoose.Schema(
       type: Number,
 
       default: 0,
+    },
+
+    // =====================================================
+    // LOYALTY POINTS
+    // =====================================================
+
+    loyaltyPointsEarned: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    loyaltyPointsCredited: {
+      type: Boolean,
+      default: false,
+    },
+
+    loyaltyPointsUsed: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    loyaltyDiscount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    loyaltyPointsRefunded: {
+      type: Boolean,
+      default: false,
     },
 
     // =====================================================

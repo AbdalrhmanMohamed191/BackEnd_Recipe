@@ -1,734 +1,816 @@
 const express = require("express");
 const router = express.Router();
 
+const mongoose = require("mongoose");
+
 const Order = require("../models/order");
 const Recipe = require("../models/recipeSchema");
 const Offer = require("../models/offerSchema");
 
-const { authMiddleware } = require("../middleWares/authMiddleware");
-const { roleMiddleware } = require("../middleWares/roleMiddleware");
+const LoyaltyWallet = require("../models/LoyaltyWallet");
+const LoyaltyTransaction = require("../models/loyaltyTransaction");
 
+const {
+  authMiddleware,
+} = require("../middleWares/authMiddleware");
+
+const {
+  roleMiddleware,
+} = require("../middleWares/roleMiddleware");
 
 // =====================================================
 // CREATE ORDER
 // USER
+// PRODUCT + OFFER + LOYALTY REDEEM
 // =====================================================
 
-// router.post("/create", authMiddleware, async (req, res) => {
-//   try {
-//     const {
-//       items,
-//       address,
-//       paymentMethod,
-//     } = req.body;
+router.post(
+  "/create",
+  authMiddleware,
+  async (req, res) => {
+    const session = await mongoose.startSession();
+
+    try {
+      const {
+        items,
+        address,
+        paymentMethod,
+        pointsToRedeem = 0,
+      } = req.body;
+
+      // =====================================================
+      // VALIDATION
+      // =====================================================
+
+      if (
+        !Array.isArray(items) ||
+        items.length === 0
+      ) {
+        return res.status(400).json({
+          message: "Cart is empty",
+        });
+      }
+
+      if (
+        !address?.street ||
+        !address?.city
+      ) {
+        return res.status(400).json({
+          message: "Address is required",
+        });
+      }
+
+      // =====================================================
+      // LOYALTY POINTS VALIDATION
+      // =====================================================
+
+      const requestedPoints =
+        Number(pointsToRedeem);
+
+      if (
+        !Number.isFinite(requestedPoints) ||
+        requestedPoints < 0 ||
+        !Number.isInteger(requestedPoints)
+      ) {
+        return res.status(400).json({
+          message:
+            "Invalid loyalty points amount",
+        });
+      }
+
+      // =====================================================
+      // START TRANSACTION
+      // =====================================================
+
+      session.startTransaction();
+
+      // =====================================================
+      // PROCESS ITEMS
+      // =====================================================
+
+      let processedItems = [];
+
+      let restaurantId = null;
+
+      for (const item of items) {
+        // ===================================================
+        // ITEM TYPE
+        // ===================================================
+
+        const itemType =
+          item.itemType === "offer"
+            ? "offer"
+            : "product";
+
+        // ===================================================
+        // PRODUCT
+        // ===================================================
+
+        if (itemType === "product") {
+          if (!item.productId) {
+            await session.abortTransaction();
 
-
-//     // ===============================
-//     // VALIDATION
-//     // ===============================
-
-//     if (!Array.isArray(items) || items.length === 0) {
-//       return res.status(400).json({
-//         message: "Cart is empty",
-//       });
-//     }
-
-//     if (!address?.street || !address?.city) {
-//       return res.status(400).json({
-//         message: "Address is required",
-//       });
-//     }
-
-
-//     // ===============================
-//     // GET PRODUCTS FROM DATABASE
-//     // ===============================
-
-//     let processedItems = [];
-
-//     let restaurantId = null;
-
-
-//     for (const item of items) {
-
-//       const product = await Recipe.findById(item.productId);
-
-//       if (!product) {
-//         return res.status(404).json({
-//           message: `Product not found: ${item.productId}`,
-//         });
-//       }
-
-
-//       // ===============================
-//       // RESTAURANT CHECK
-//       // ===============================
-
-//       if (!restaurantId) {
-//         restaurantId = product.restaurantId;
-//       }
-
-
-//       // ممنوع أوردر من أكتر من مطعم
-//       if (
-//         product.restaurantId.toString() !==
-//         restaurantId.toString()
-//       ) {
-//         return res.status(400).json({
-//           message: "You can only order from one restaurant at a time",
-//         });
-//       }
-
-
-//       // ===============================
-//       // VARIANT
-//       // ===============================
-
-//       let selectedVariant = null;
-
-//       if (item.variant?.name) {
-
-//         selectedVariant = product.variants.find(
-//           (variant) =>
-//             variant.name === item.variant.name
-//         );
-
-//         if (!selectedVariant) {
-//           return res.status(400).json({
-//             message: `Variant not found for ${product.title}`,
-//           });
-//         }
-//       }
-
-
-//       // ===============================
-//       // PRICE
-//       // ===============================
-
-//       const price = selectedVariant
-//         ? selectedVariant.price
-//         : product.price;
-
-
-//       if (price === undefined || price === null) {
-//         return res.status(400).json({
-//           message: `Price not found for ${product.title}`,
-//         });
-//       }
-
-
-//       // ===============================
-//       // ADD ITEM
-//       // ===============================
-
-//       processedItems.push({
-//         productId: product._id,
-
-//         title: product.title,
-
-//         price: Number(price),
-
-//         variant: selectedVariant
-//           ? {
-//               name: selectedVariant.name,
-//               price: Number(selectedVariant.price),
-//             }
-//           : null,
-
-//         quantity: Number(item.quantity) || 1,
-//       });
-//     }
-
-
-//     // ===============================
-//     // CALCULATE SUBTOTAL
-//     // ===============================
-
-//     const subtotal = processedItems.reduce(
-//       (total, item) => {
-//         return total + item.price * item.quantity;
-//       },
-//       0
-//     );
-
-
-//     // ===============================
-//     // DELIVERY
-//     // ===============================
-
-//     const deliveryFee = 15;
-
-
-//     // ===============================
-//     // TOTAL
-//     // ===============================
-
-//     const totalPrice =
-//       subtotal + deliveryFee;
-
-
-//     // ===============================
-//     // CREATE ORDER
-//     // ===============================
-
-//     const order = await Order.create({
-
-//       userId: req.user._id,
-
-//       name: req.user.name,
-
-//       phone: req.user.phone,
-
-//       restaurantId,
-
-//       items: processedItems,
-
-//       totalPrice,
-
-//       deliveryFee,
-
-//       paymentMethod:
-//         paymentMethod === "card"
-//           ? "card"
-//           : "cash",
-
-//       isPaid:
-//         paymentMethod === "card",
-
-//       address,
-
-//       status: "pending",
-//     });
-
-
-//     // ===============================
-//     // POPULATE
-//     // ===============================
-
-//     const fullOrder =
-//       await Order.findById(order._id)
-//         .populate(
-//           "userId",
-//           "name email phone"
-//         )
-//         .populate(
-//           "restaurantId",
-//           "name image address phone"
-//         );
-
-
-//     // ===============================
-//     // SOCKET
-//     // ===============================
-
-//     const io = req.app.get("io");
-
-//     if (io) {
-
-//       // User
-//       io
-//         .to(req.user._id.toString())
-//         .emit(
-//           "orderCreated",
-//           fullOrder
-//         );
-
-
-//       // Admin
-//       io
-//         .to("adminRoom")
-//         .emit(
-//           "orderCreated",
-//           fullOrder
-//         );
-
-
-//       // Restaurant Owner
-//       io
-//         .to(
-//           `restaurant_${restaurantId}`
-//         )
-//         .emit(
-//           "orderCreated",
-//           fullOrder
-//         );
-//     }
-
-
-//     res.status(201).json(fullOrder);
-
-//   } catch (err) {
-
-//     console.log(
-//       "CREATE ORDER ERROR:",
-//       err
-//     );
-
-//     res.status(500).json({
-//       message: err.message,
-//     });
-//   }
-// });
-
-
-// =====================================================
-// CREATE ORDER
-// USER
-// SUPPORTS PRODUCTS + OFFERS
-// =====================================================
-
-// =====================================================
-// CREATE ORDER
-// USER
-// PRODUCT + OFFER
-// =====================================================
-
-router.post("/create", authMiddleware, async (req, res) => {
-  try {
-    const {
-      items,
-      address,
-      paymentMethod,
-    } = req.body;
-
-    // =====================================================
-    // VALIDATION
-    // =====================================================
-
-    if (!Array.isArray(items) || items.length === 0) {
-      return res.status(400).json({
-        message: "Cart is empty",
-      });
-    }
-
-    if (!address?.street || !address?.city) {
-      return res.status(400).json({
-        message: "Address is required",
-      });
-    }
-
-    // =====================================================
-    // PROCESS ITEMS
-    // =====================================================
-
-    let processedItems = [];
-
-    let restaurantId = null;
-
-    for (const item of items) {
-      // ===================================================
-      // ITEM TYPE
-      // ===================================================
-
-      const itemType =
-        item.itemType === "offer"
-          ? "offer"
-          : "product";
-
-      // ===================================================
-      // PRODUCT
-      // ===================================================
-
-      if (itemType === "product") {
-        if (!item.productId) {
-          return res.status(400).json({
-            message: "Product ID is required",
-          });
-        }
-
-        const product = await Recipe.findById(
-          item.productId
-        );
-
-        if (!product) {
-          return res.status(404).json({
-            message: `Product not found: ${item.productId}`,
-          });
-        }
-
-        // ===============================================
-        // RESTAURANT
-        // ===============================================
-
-        if (!product.restaurantId) {
-          return res.status(400).json({
-            message:
-              `Restaurant not found for product ${product.title}`,
-          });
-        }
-
-        if (!restaurantId) {
-          restaurantId = product.restaurantId;
-        }
-
-        if (
-          product.restaurantId.toString() !==
-          restaurantId.toString()
-        ) {
-          return res.status(400).json({
-            message:
-              "You can only order from one restaurant at a time",
-          });
-        }
-
-        // ===============================================
-        // VARIANT
-        // ===============================================
-
-        let selectedVariant = null;
-
-        if (item.variant?.name) {
-          selectedVariant =
-            product.variants?.find(
-              (variant) =>
-                variant.name === item.variant.name
-            );
-
-          if (!selectedVariant) {
             return res.status(400).json({
               message:
-                `Variant not found for ${product.title}`,
+                "Product ID is required",
             });
           }
-        }
 
-        // ===============================================
-        // PRICE
-        // ===============================================
+          const product =
+            await Recipe.findById(
+              item.productId
+            ).session(session);
 
-        const price = selectedVariant
-          ? selectedVariant.price
-          : product.price;
+          if (!product) {
+            await session.abortTransaction();
 
-        if (
-          price === undefined ||
-          price === null
-        ) {
-          return res.status(400).json({
-            message:
-              `Price not found for ${product.title}`,
+            return res.status(404).json({
+              message:
+                `Product not found: ${item.productId}`,
+            });
+          }
+
+          // ===============================================
+          // RESTAURANT
+          // ===============================================
+
+          if (!product.restaurantId) {
+            await session.abortTransaction();
+
+            return res.status(400).json({
+              message:
+                `Restaurant not found for product ${product.title}`,
+            });
+          }
+
+          if (!restaurantId) {
+            restaurantId =
+              product.restaurantId;
+          }
+
+          if (
+            product.restaurantId.toString() !==
+            restaurantId.toString()
+          ) {
+            await session.abortTransaction();
+
+            return res.status(400).json({
+              message:
+                "You can only order from one restaurant at a time",
+            });
+          }
+
+          // ===============================================
+          // VARIANT
+          // ===============================================
+
+          let selectedVariant = null;
+
+          if (item.variant?.name) {
+            selectedVariant =
+              product.variants?.find(
+                (variant) =>
+                  variant.name ===
+                  item.variant.name
+              );
+
+            if (!selectedVariant) {
+              await session.abortTransaction();
+
+              return res.status(400).json({
+                message:
+                  `Variant not found for ${product.title}`,
+              });
+            }
+          }
+
+          // ===============================================
+          // PRICE
+          // ===============================================
+
+          const price = selectedVariant
+            ? selectedVariant.price
+            : product.price;
+
+          if (
+            price === undefined ||
+            price === null
+          ) {
+            await session.abortTransaction();
+
+            return res.status(400).json({
+              message:
+                `Price not found for ${product.title}`,
+            });
+          }
+
+          // ===============================================
+          // QUANTITY
+          // ===============================================
+
+          const quantity =
+            Number(item.quantity);
+
+          if (
+            !Number.isInteger(quantity) ||
+            quantity <= 0
+          ) {
+            await session.abortTransaction();
+
+            return res.status(400).json({
+              message:
+                `Invalid quantity for ${product.title}`,
+            });
+          }
+
+          // ===============================================
+          // ADD PRODUCT
+          // ===============================================
+
+          processedItems.push({
+            itemType: "product",
+
+            productId:
+              product._id,
+
+            offerId: null,
+
+            title:
+              product.title,
+
+            price:
+              Number(price),
+
+            variant:
+              selectedVariant
+                ? {
+                    name:
+                      selectedVariant.name,
+
+                    price:
+                      Number(
+                        selectedVariant.price
+                      ),
+                  }
+                : null,
+
+            quantity,
+
+            discount: 0,
+
+            image:
+              product.image || "",
           });
         }
 
-        // ===============================================
-        // ADD PRODUCT
-        // ===============================================
+        // ===================================================
+        // OFFER
+        // ===================================================
 
-        processedItems.push({
-          itemType: "product",
+        else if (itemType === "offer") {
+          if (!item.offerId) {
+            await session.abortTransaction();
 
-          productId: product._id,
+            return res.status(400).json({
+              message:
+                "Offer ID is required",
+            });
+          }
 
-          offerId: null,
+          const offer =
+            await Offer.findById(
+              item.offerId
+            ).session(session);
 
-          title: product.title,
+          if (!offer) {
+            await session.abortTransaction();
 
-          price: Number(price),
+            return res.status(404).json({
+              message:
+                `Offer not found: ${item.offerId}`,
+            });
+          }
 
-          variant: selectedVariant
-            ? {
-                name: selectedVariant.name,
-                price: Number(
-                  selectedVariant.price
-                ),
-              }
-            : null,
+          // ===============================================
+          // ACTIVE OFFER
+          // ===============================================
 
-          quantity:
-            Number(item.quantity) || 1,
+          if (offer.isActive === false) {
+            await session.abortTransaction();
 
-          discount: 0,
+            return res.status(400).json({
+              message:
+                "This offer is no longer active",
+            });
+          }
 
-          image: product.image || "",
+          // ===============================================
+          // EXPIRATION
+          // ===============================================
+
+          if (
+            offer.expiresAt &&
+            new Date(offer.expiresAt) <
+              new Date()
+          ) {
+            await session.abortTransaction();
+
+            return res.status(400).json({
+              message:
+                "This offer has expired",
+            });
+          }
+
+          // ===============================================
+          // RESTAURANT
+          // ===============================================
+
+          if (!offer.restaurantId) {
+            await session.abortTransaction();
+
+            return res.status(400).json({
+              message:
+                `Restaurant not found for offer ${offer.title}`,
+            });
+          }
+
+          if (!restaurantId) {
+            restaurantId =
+              offer.restaurantId;
+          }
+
+          if (
+            offer.restaurantId.toString() !==
+            restaurantId.toString()
+          ) {
+            await session.abortTransaction();
+
+            return res.status(400).json({
+              message:
+                "You can only order from one restaurant at a time",
+            });
+          }
+
+          // ===============================================
+          // OFFER PRICE
+          // ===============================================
+
+          const originalPrice =
+            Number(offer.price);
+
+          const discount =
+            Number(
+              offer.discount || 0
+            );
+
+          const finalPrice =
+            originalPrice -
+            (originalPrice *
+              discount) /
+              100;
+
+          if (
+            !Number.isFinite(
+              originalPrice
+            ) ||
+            originalPrice < 0
+          ) {
+            await session.abortTransaction();
+
+            return res.status(400).json({
+              message:
+                `Invalid original price for offer ${offer.title}`,
+            });
+          }
+
+          if (
+            !Number.isFinite(
+              finalPrice
+            ) ||
+            finalPrice < 0
+          ) {
+            await session.abortTransaction();
+
+            return res.status(400).json({
+              message:
+                `Invalid price for offer ${offer.title}`,
+            });
+          }
+
+          // ===============================================
+          // QUANTITY
+          // ===============================================
+
+          const quantity =
+            Number(item.quantity);
+
+          if (
+            !Number.isInteger(quantity) ||
+            quantity <= 0
+          ) {
+            await session.abortTransaction();
+
+            return res.status(400).json({
+              message:
+                `Invalid quantity for offer ${offer.title}`,
+            });
+          }
+
+          // ===============================================
+          // ADD OFFER
+          // ===============================================
+
+          processedItems.push({
+            itemType: "offer",
+
+            productId: null,
+
+            offerId:
+              offer._id,
+
+            title:
+              offer.title,
+
+            price:
+              Number(finalPrice),
+
+            variant: null,
+
+            quantity,
+
+            discount,
+
+            image:
+              offer.image || "",
+          });
+        }
+      }
+
+      // =====================================================
+      // RESTAURANT VALIDATION
+      // =====================================================
+
+      if (!restaurantId) {
+        await session.abortTransaction();
+
+        return res.status(400).json({
+          message:
+            "Restaurant could not be determined",
         });
       }
 
-      // ===================================================
-      // OFFER
-      // ===================================================
+      // =====================================================
+      // CALCULATE SUBTOTAL
+      // =====================================================
 
-      else if (itemType === "offer") {
-        if (!item.offerId) {
-          return res.status(400).json({
-            message: "Offer ID is required",
-          });
-        }
-
-        const offer = await Offer.findById(
-          item.offerId
+      const subtotal =
+        processedItems.reduce(
+          (total, item) => {
+            return (
+              total +
+              Number(item.price) *
+                Number(item.quantity)
+            );
+          },
+          0
         );
 
-        if (!offer) {
-          return res.status(404).json({
-            message:
-              `Offer not found: ${item.offerId}`,
-          });
-        }
+      // =====================================================
+      // DELIVERY
+      // =====================================================
 
+      const deliveryFee = 0;
+
+      // =====================================================
+      // BEFORE LOYALTY TOTAL
+      // =====================================================
+
+      const subtotalWithDelivery =
+        subtotal + deliveryFee;
+
+      // =====================================================
+      // LOYALTY REDEEM
+      // =====================================================
+      //
+      // NEW RULE:
+      //
+      // 1 POINT = 1 EGP DISCOUNT
+      //
+      // Examples:
+      //
+      // 50 POINTS  = 50 EGP DISCOUNT
+      // 120 POINTS = 120 EGP DISCOUNT
+      // 250 POINTS = 250 EGP DISCOUNT
+      //
+      // If order = 300 EGP
+      // and user has 500 points
+      // maximum usable points = 300
+      //
+      // EARNING RULE REMAINS:
+      //
+      // 10 EGP SPENT = 1 POINT
+      //
+      // =====================================================
+
+      let loyaltyPointsUsed = 0;
+
+      let loyaltyDiscount = 0;
+
+      if (requestedPoints > 0) {
         // ===============================================
-        // ACTIVE OFFER
+        // MAX POINTS FOR THIS ORDER
         // ===============================================
-
-        if (offer.isActive === false) {
-          return res.status(400).json({
-            message:
-              "This offer is no longer active",
-          });
-        }
-
-        // ===============================================
-        // EXPIRATION
-        // ===============================================
-
-        if (
-          offer.expiresAt &&
-          new Date(offer.expiresAt) < new Date()
-        ) {
-          return res.status(400).json({
-            message:
-              "This offer has expired",
-          });
-        }
-
-        // ===============================================
-        // RESTAURANT
-        // ===============================================
-
-        if (!offer.restaurantId) {
-          return res.status(400).json({
-            message:
-              `Restaurant not found for offer ${offer.title}`,
-          });
-        }
-
-        if (!restaurantId) {
-          restaurantId =
-            offer.restaurantId;
-        }
-
-        if (
-          offer.restaurantId.toString() !==
-          restaurantId.toString()
-        ) {
-          return res.status(400).json({
-            message:
-              "You can only order from one restaurant at a time",
-          });
-        }
-
-        // ===============================================
-        // OFFER PRICE
-        // ===============================================
-
-        const originalPrice =
-          Number(offer.price);
-
-        const discount =
-          Number(offer.discount || 0);
-
-        const finalPrice =
-          originalPrice -
-          (originalPrice * discount) / 100;
-
-        if (
-          !Number.isFinite(originalPrice) ||
-          originalPrice < 0
-        ) {
-          return res.status(400).json({
-            message:
-              `Invalid original price for offer ${offer.title}`,
-          });
-        }
-
-        if (
-          !Number.isFinite(finalPrice) ||
-          finalPrice < 0
-        ) {
-          return res.status(400).json({
-            message:
-              `Invalid price for offer ${offer.title}`,
-          });
-        }
-
-        // ===============================================
-        // ADD OFFER
-        // ===============================================
-
-        processedItems.push({
-          itemType: "offer",
-
-          productId: null,
-
-          offerId: offer._id,
-
-          title: offer.title,
-
-          price: Number(finalPrice),
-
-          variant: null,
-
-          quantity:
-            Number(item.quantity) || 1,
-
-          discount: discount,
-
-          image: offer.image || "",
-        });
-      }
-    }
-
-    // =====================================================
-    // RESTAURANT VALIDATION
-    // =====================================================
-
-    if (!restaurantId) {
-      return res.status(400).json({
-        message:
-          "Restaurant could not be determined",
-      });
-    }
-
-    // =====================================================
-    // CALCULATE SUBTOTAL
-    // =====================================================
-
-    const subtotal =
-      processedItems.reduce(
-        (total, item) => {
-          return (
-            total +
-            Number(item.price) *
-              Number(item.quantity)
+        //
+        // 1 POINT = 1 EGP
+        //
+        // So maximum points cannot exceed
+        // the actual order price.
+        //
+        const maxPointsForOrder =
+          Math.floor(
+            subtotalWithDelivery
           );
-        },
-        0
+
+        if (
+          requestedPoints >
+          maxPointsForOrder
+        ) {
+          await session.abortTransaction();
+
+          return res.status(400).json({
+            message:
+              `You cannot use more than ${maxPointsForOrder} points for this order`,
+          });
+        }
+
+        // ===============================================
+        // CALCULATE DISCOUNT
+        // ===============================================
+        //
+        // 1 POINT = 1 EGP
+        //
+        loyaltyPointsUsed =
+          requestedPoints;
+
+        loyaltyDiscount =
+          requestedPoints;
+
+        // ===============================================
+        // ATOMIC WALLET DEDUCTION
+        // ===============================================
+        //
+        // IMPORTANT:
+        // points must be >= requested points
+        //
+        // This prevents negative balances.
+        //
+        const wallet =
+          await LoyaltyWallet.findOneAndUpdate(
+            {
+              userId:
+                req.user._id,
+
+              restaurantId,
+
+              points: {
+                $gte:
+                  requestedPoints,
+              },
+            },
+            {
+              $inc: {
+                points:
+                  -requestedPoints,
+              },
+            },
+            {
+              new: true,
+
+              session,
+            }
+          );
+
+        if (!wallet) {
+          await session.abortTransaction();
+
+          return res.status(400).json({
+            message:
+              "Insufficient loyalty points for this restaurant",
+          });
+        }
+      }
+
+      // =====================================================
+      // FINAL TOTAL
+      // =====================================================
+
+      const totalPrice =
+        Math.max(
+          0,
+          subtotalWithDelivery -
+            loyaltyDiscount
+        );
+
+      // =====================================================
+      // CREATE ORDER
+      // =====================================================
+
+      const createdOrders =
+        await Order.create(
+          [
+            {
+              userId:
+                req.user._id,
+
+              name:
+                req.user.name,
+
+              phone:
+                req.user.phone,
+
+              restaurantId,
+
+              items:
+                processedItems,
+
+              totalPrice,
+
+              deliveryFee,
+
+              loyaltyPointsUsed,
+
+              loyaltyDiscount,
+
+              loyaltyPointsEarned: 0,
+
+              loyaltyPointsCredited:
+                false,
+
+              loyaltyPointsRefunded:
+                false,
+
+              paymentMethod:
+                paymentMethod ===
+                "card"
+                  ? "card"
+                  : "cash",
+
+              isPaid:
+                paymentMethod ===
+                "card",
+
+              address,
+
+              status:
+                "pending",
+            },
+          ],
+          {
+            session,
+          }
+        );
+
+      const order =
+        createdOrders[0];
+
+      // =====================================================
+      // CREATE REDEEM TRANSACTION
+      // =====================================================
+
+      if (
+        loyaltyPointsUsed > 0
+      ) {
+        await LoyaltyTransaction.create(
+          [
+            {
+              userId:
+                req.user._id,
+
+              restaurantId,
+
+              orderId:
+                order._id,
+
+              type:
+                "redeem",
+
+              points:
+                -loyaltyPointsUsed,
+
+              description:
+                `Redeemed ${loyaltyPointsUsed} points for ${loyaltyDiscount} EGP discount`,
+            },
+          ],
+          {
+            session,
+          }
+        );
+      }
+
+      // =====================================================
+      // COMMIT TRANSACTION
+      // =====================================================
+
+      await session.commitTransaction();
+
+      // =====================================================
+      // POPULATE
+      // =====================================================
+
+      const fullOrder =
+        await Order.findById(
+          order._id
+        )
+          .populate(
+            "userId",
+            "name email phone"
+          )
+          .populate(
+            "restaurantId",
+            "name image address phone"
+          )
+          .populate(
+            "items.productId",
+            "title price image"
+          )
+          .populate(
+            "items.offerId",
+            "title price discount image"
+          );
+
+      // =====================================================
+      // SOCKET
+      // =====================================================
+
+      const io =
+        req.app.get("io");
+
+      if (io) {
+        // USER
+        io
+          .to(
+            req.user._id.toString()
+          )
+          .emit(
+            "orderCreated",
+            fullOrder
+          );
+
+        // ADMIN
+        io
+          .to("adminRoom")
+          .emit(
+            "orderCreated",
+            fullOrder
+          );
+
+        // RESTAURANT OWNER
+        io
+          .to(
+            `restaurant_${restaurantId}`
+          )
+          .emit(
+            "orderCreated",
+            fullOrder
+          );
+      }
+
+      // =====================================================
+      // RESPONSE
+      // =====================================================
+
+      return res.status(201).json(
+        fullOrder
       );
 
-    // =====================================================
-    // DELIVERY
-    // =====================================================
+    } catch (err) {
+      // =====================================================
+      // ROLLBACK
+      // =====================================================
 
-    const deliveryFee = 0;
-
-    // =====================================================
-    // TOTAL
-    // =====================================================
-
-    const totalPrice =
-      subtotal + deliveryFee;
-
-    // =====================================================
-    // CREATE ORDER
-    // =====================================================
-
-    const order = await Order.create({
-      userId: req.user._id,
-
-      name: req.user.name,
-
-      phone: req.user.phone,
-
-      restaurantId,
-
-      items: processedItems,
-
-      totalPrice,
-
-      deliveryFee,
-
-      paymentMethod:
-        paymentMethod === "card"
-          ? "card"
-          : "cash",
-
-      isPaid:
-        paymentMethod === "card",
-
-      address,
-
-      status: "pending",
-    });
-
-    // =====================================================
-    // POPULATE
-    // =====================================================
-
-    const fullOrder =
-      await Order.findById(
-        order._id
-      )
-        .populate(
-          "userId",
-          "name email phone"
-        )
-        .populate(
-          "restaurantId",
-          "name image address phone"
-        )
-        .populate(
-          "items.productId",
-          "title price image"
-        )
-        .populate(
-          "items.offerId",
-          "title price discount image"
+      try {
+        await session.abortTransaction();
+      } catch (rollbackError) {
+        console.log(
+          "CREATE ORDER ROLLBACK ERROR:",
+          rollbackError.message
         );
+      }
 
-    // =====================================================
-    // SOCKET
-    // =====================================================
+      console.log(
+        "CREATE ORDER ERROR:",
+        err
+      );
 
-    const io = req.app.get("io");
+      return res.status(500).json({
+        message: err.message,
+      });
 
-    if (io) {
-      // USER
-      io
-        .to(
-          req.user._id.toString()
-        )
-        .emit(
-          "orderCreated",
-          fullOrder
-        );
-
-      // ADMIN
-      io
-        .to("adminRoom")
-        .emit(
-          "orderCreated",
-          fullOrder
-        );
-
-      // RESTAURANT OWNER
-      io
-        .to(
-          `restaurant_${restaurantId}`
-        )
-        .emit(
-          "orderCreated",
-          fullOrder
-        );
+    } finally {
+      await session.endSession();
     }
-
-    // =====================================================
-    // RESPONSE
-    // =====================================================
-
-    return res.status(201).json(
-      fullOrder
-    );
-
-  } catch (err) {
-    console.log(
-      "CREATE ORDER ERROR:",
-      err
-    );
-
-    return res.status(500).json({
-      message: err.message,
-    });
   }
-});
+);
 
 // =====================================================
 // MY ORDERS
@@ -739,9 +821,7 @@ router.get(
   "/myorders",
   authMiddleware,
   async (req, res) => {
-
     try {
-
       const orders =
         await Order.find({
           userId: req.user._id,
@@ -754,18 +834,20 @@ router.get(
             createdAt: -1,
           });
 
-
-      res.json(orders);
+      return res.json(orders);
 
     } catch (err) {
+      console.log(
+        "GET MY ORDERS ERROR:",
+        err
+      );
 
-      res.status(500).json({
+      return res.status(500).json({
         message: err.message,
       });
     }
   }
 );
-
 
 // =====================================================
 // GET ALL ORDERS
@@ -777,36 +859,31 @@ router.get(
   authMiddleware,
   roleMiddleware("admin"),
   async (req, res) => {
-
     try {
-
       const {
         date,
         all,
         restaurantId,
       } = req.query;
 
-
       const filter = {
         isArchived: false,
       };
-
 
       // ===============================
       // RESTAURANT FILTER
       // ===============================
 
       if (restaurantId) {
-        filter.restaurantId = restaurantId;
+        filter.restaurantId =
+          restaurantId;
       }
-
 
       // ===============================
       // ALL ORDERS
       // ===============================
 
       if (all === "true") {
-
         const orders =
           await Order.find(filter)
             .populate(
@@ -821,17 +898,14 @@ router.get(
               createdAt: -1,
             });
 
-
         return res.json(orders);
       }
-
 
       // ===============================
       // DATE
       // ===============================
 
       if (date) {
-
         const start =
           new Date(date);
 
@@ -842,7 +916,6 @@ router.get(
           0
         );
 
-
         const end =
           new Date(date);
 
@@ -852,7 +925,6 @@ router.get(
           59,
           999
         );
-
 
         filter.createdAt = {
           $gte: start,
@@ -860,12 +932,12 @@ router.get(
         };
 
       } else {
-
-        // Default = Today
+        // ===============================
+        // DEFAULT = TODAY
+        // ===============================
 
         const now =
           new Date();
-
 
         const start =
           new Date(now);
@@ -877,7 +949,6 @@ router.get(
           0
         );
 
-
         const end =
           new Date(now);
 
@@ -888,13 +959,11 @@ router.get(
           999
         );
 
-
         filter.createdAt = {
           $gte: start,
           $lte: end,
         };
       }
-
 
       const orders =
         await Order.find(filter)
@@ -910,23 +979,20 @@ router.get(
             createdAt: -1,
           });
 
-
-      res.json(orders);
+      return res.json(orders);
 
     } catch (err) {
-
       console.log(
         "GET ALL ORDERS ERROR:",
         err
       );
 
-      res.status(500).json({
+      return res.status(500).json({
         message: err.message,
       });
     }
   }
 );
-
 
 // =====================================================
 // GET RESTAURANT OWNER ORDERS
@@ -936,18 +1002,17 @@ router.get(
 router.get(
   "/restaurant-orders",
   authMiddleware,
-  roleMiddleware("restaurantOwner"),
+  roleMiddleware(
+    "restaurantOwner"
+  ),
   async (req, res) => {
-
     try {
-
       if (!req.user.restaurantId) {
         return res.status(400).json({
           message:
             "You are not assigned to a restaurant",
         });
       }
-
 
       const orders =
         await Order.find({
@@ -968,23 +1033,20 @@ router.get(
             createdAt: -1,
           });
 
-
-      res.json(orders);
+      return res.json(orders);
 
     } catch (err) {
-
       console.log(
         "RESTAURANT ORDERS ERROR:",
         err
       );
 
-      res.status(500).json({
+      return res.status(500).json({
         message: err.message,
       });
     }
   }
 );
-
 
 // =====================================================
 // GET ONE ORDER
@@ -995,9 +1057,7 @@ router.get(
   "/:id",
   authMiddleware,
   async (req, res) => {
-
     try {
-
       const order =
         await Order.findById(
           req.params.id
@@ -1011,56 +1071,69 @@ router.get(
             "name image address phone"
           );
 
-
       if (!order) {
         return res.status(404).json({
-          message: "Order not found",
+          message:
+            "Order not found",
         });
       }
 
+      // ===============================
+      // USER PERMISSION
+      // ===============================
 
-      // User can see only his order
       if (
         req.user.role === "user" &&
         order.userId._id.toString() !==
           req.user._id.toString()
       ) {
-
         return res.status(403).json({
-          message: "Not allowed",
+          message:
+            "Not allowed",
         });
       }
 
+      // ===============================
+      // OWNER PERMISSION
+      // ===============================
 
-      // Owner can see only his restaurant orders
       if (
         req.user.role ===
           "restaurantOwner" &&
         order.restaurantId._id.toString() !==
           req.user.restaurantId.toString()
       ) {
-
         return res.status(403).json({
-          message: "Not allowed",
+          message:
+            "Not allowed",
         });
       }
 
-
-      res.json(order);
+      return res.json(order);
 
     } catch (err) {
+      console.log(
+        "GET ONE ORDER ERROR:",
+        err
+      );
 
-      res.status(500).json({
+      return res.status(500).json({
         message: err.message,
       });
     }
   }
 );
 
-
 // =====================================================
 // UPDATE ORDER STATUS
 // ADMIN / RESTAURANT OWNER
+//
+// FEATURES:
+// - Earn points on delivered
+// - Refund redeemed points on cancelled
+// - Prevent duplicate earn
+// - Prevent duplicate refund
+// - MongoDB Transaction
 // =====================================================
 
 router.put(
@@ -1071,11 +1144,12 @@ router.put(
     "restaurantOwner"
   ),
   async (req, res) => {
+    const session =
+      await mongoose.startSession();
 
     try {
-
-      const { status } = req.body;
-
+      const { status } =
+        req.body;
 
       const allowedStatuses = [
         "pending",
@@ -1084,49 +1158,298 @@ router.put(
         "cancelled",
       ];
 
-
       if (
-        !allowedStatuses.includes(status)
+        !allowedStatuses.includes(
+          status
+        )
       ) {
-
         return res.status(400).json({
-          message: "Invalid status",
+          message:
+            "Invalid status",
         });
       }
 
+      // =====================================================
+      // START TRANSACTION
+      // =====================================================
+
+      session.startTransaction();
+
+      // =====================================================
+      // GET ORDER
+      // =====================================================
 
       const order =
         await Order.findById(
           req.params.id
-        );
-
+        ).session(session);
 
       if (!order) {
+        await session.abortTransaction();
 
         return res.status(404).json({
-          message: "Order not found",
+          message:
+            "Order not found",
         });
       }
 
+      // =====================================================
+      // OWNER PERMISSION
+      // =====================================================
 
-      // Owner can update only his orders
       if (
         req.user.role ===
           "restaurantOwner" &&
         order.restaurantId.toString() !==
           req.user.restaurantId.toString()
       ) {
+        await session.abortTransaction();
 
         return res.status(403).json({
-          message: "Not allowed",
+          message:
+            "Not allowed",
         });
       }
 
+      // =====================================================
+      // PREVIOUS STATUS
+      // =====================================================
 
-      order.status = status;
+      const previousStatus =
+        order.status;
 
-      await order.save();
+      // =====================================================
+      // UPDATE STATUS
+      // =====================================================
 
+      order.status =
+        status;
+
+      let pointsEarned = 0;
+
+      let pointsRefunded = 0;
+
+      // =====================================================
+      // LOYALTY EARN
+      // =====================================================
+      //
+      // 10 EGP = 1 POINT
+      //
+      // This rule DOES NOT change.
+      //
+      // Points are earned only when
+      // order becomes delivered.
+      //
+      // =====================================================
+
+      const shouldCreditPoints =
+        status === "delivered" &&
+        previousStatus !==
+          "delivered" &&
+        order.loyaltyPointsCredited ===
+          false;
+
+      if (
+        shouldCreditPoints
+      ) {
+        pointsEarned =
+          Math.floor(
+            Number(
+              order.totalPrice
+            ) / 10
+          );
+
+        // ===============================================
+        // MARK AS CREDITED
+        // ===============================================
+
+        order.loyaltyPointsEarned =
+          pointsEarned;
+
+        order.loyaltyPointsCredited =
+          true;
+
+        // ===============================================
+        // ADD POINTS
+        // ===============================================
+
+        if (
+          pointsEarned > 0
+        ) {
+          await LoyaltyWallet.findOneAndUpdate(
+            {
+              userId:
+                order.userId,
+
+              restaurantId:
+                order.restaurantId,
+            },
+            {
+              $inc: {
+                points:
+                  pointsEarned,
+              },
+            },
+            {
+              new: true,
+
+              upsert: true,
+
+              setDefaultsOnInsert:
+                true,
+
+              session,
+            }
+          );
+
+          // =============================================
+          // CREATE EARN TRANSACTION
+          // =============================================
+
+          await LoyaltyTransaction.create(
+            [
+              {
+                userId:
+                  order.userId,
+
+                restaurantId:
+                  order.restaurantId,
+
+                orderId:
+                  order._id,
+
+                type:
+                  "earn",
+
+                points:
+                  pointsEarned,
+
+                description:
+                  `Earned ${pointsEarned} points from delivered order`,
+              },
+            ],
+            {
+              session,
+            }
+          );
+        }
+      }
+
+      // =====================================================
+      // LOYALTY REFUND
+      // =====================================================
+      //
+      // If customer used points and order becomes cancelled:
+      //
+      // Wallet + used points
+      //
+      // Example:
+      //
+      // Used 120 points
+      // Order cancelled
+      // Wallet +120 points
+      //
+      // =====================================================
+
+     const shouldRefundPoints =
+      status === "cancelled" &&
+      previousStatus !== "cancelled" &&
+      Number(order.loyaltyPointsUsed || 0) > 0 &&
+      order.loyaltyPointsRefunded !== true;
+      if (
+        shouldRefundPoints
+      ) {
+        pointsRefunded =
+          Number(
+            order.loyaltyPointsUsed
+          );
+
+        // ===============================================
+        // RETURN POINTS TO WALLET
+        // ===============================================
+
+        await LoyaltyWallet.findOneAndUpdate(
+          {
+            userId:
+              order.userId,
+
+            restaurantId:
+              order.restaurantId,
+          },
+          {
+            $inc: {
+              points:
+                pointsRefunded,
+            },
+          },
+          {
+            new: true,
+
+            upsert: true,
+
+            setDefaultsOnInsert:
+              true,
+
+            session,
+          }
+        );
+
+        // ===============================================
+        // MARK REFUNDED
+        // ===============================================
+
+        order.loyaltyPointsRefunded =
+          true;
+
+        // ===============================================
+        // CREATE REFUND TRANSACTION
+        // ===============================================
+
+        await LoyaltyTransaction.create(
+          [
+            {
+              userId:
+                order.userId,
+
+              restaurantId:
+                order.restaurantId,
+
+              orderId:
+                order._id,
+
+              type:
+                "refund",
+
+              points:
+                pointsRefunded,
+
+              description:
+                `Refunded ${pointsRefunded} redeemed points because order was cancelled`,
+            },
+          ],
+          {
+            session,
+          }
+        );
+      }
+
+      // =====================================================
+      // SAVE ORDER
+      // =====================================================
+
+      await order.save({
+        session,
+      });
+
+      // =====================================================
+      // COMMIT
+      // =====================================================
+
+      await session.commitTransaction();
+
+      // =====================================================
+      // GET FULL ORDER
+      // =====================================================
 
       const fullOrder =
         await Order.findById(
@@ -1141,15 +1464,15 @@ router.put(
             "name image address phone"
           );
 
+      // =====================================================
+      // SOCKET.IO
+      // =====================================================
 
-      // ===============================
-      // SOCKET
-      // ===============================
-
-      const io = req.app.get("io");
+      const io =
+        req.app.get("io");
 
       if (io) {
-
+        // USER
         io
           .to(
             fullOrder.userId._id.toString()
@@ -1159,7 +1482,7 @@ router.put(
             fullOrder
           );
 
-
+        // ADMIN
         io
           .to("adminRoom")
           .emit(
@@ -1167,7 +1490,7 @@ router.put(
             fullOrder
           );
 
-
+        // RESTAURANT OWNER
         io
           .to(
             `restaurant_${fullOrder.restaurantId._id}`
@@ -1178,23 +1501,60 @@ router.put(
           );
       }
 
+      // =====================================================
+      // RESPONSE
+      // =====================================================
 
-      res.json(fullOrder);
+      return res.json({
+        ...fullOrder.toObject(),
+
+        pointsEarned,
+
+        pointsRefunded,
+      });
 
     } catch (err) {
+      // =====================================================
+      // ROLLBACK
+      // =====================================================
+
+      try {
+        await session.abortTransaction();
+      } catch (rollbackError) {
+        console.log(
+          "LOYALTY ROLLBACK ERROR:",
+          rollbackError.message
+        );
+      }
 
       console.log(
         "UPDATE ORDER STATUS ERROR:",
         err
       );
 
-      res.status(500).json({
-        message: err.message,
+      // =====================================================
+      // DUPLICATE LOYALTY TRANSACTION
+      // =====================================================
+
+      if (
+        err.code === 11000
+      ) {
+        return res.status(409).json({
+          message:
+            "This loyalty transaction already exists",
+        });
+      }
+
+      return res.status(500).json({
+        message:
+          err.message,
       });
+
+    } finally {
+      await session.endSession();
     }
   }
 );
-
 
 // =====================================================
 // DELETE ORDER
@@ -1206,27 +1566,23 @@ router.delete(
   authMiddleware,
   roleMiddleware("admin"),
   async (req, res) => {
-
     try {
-
       const order =
         await Order.findByIdAndDelete(
           req.params.id
         );
 
-
       if (!order) {
-
         return res.status(404).json({
-          message: "Order not found",
+          message:
+            "Order not found",
         });
       }
 
-
-      const io = req.app.get("io");
+      const io =
+        req.app.get("io");
 
       if (io) {
-
         io
           .to("adminRoom")
           .emit(
@@ -1235,21 +1591,24 @@ router.delete(
           );
       }
 
-
-      res.json({
+      return res.json({
         message:
           "Order deleted successfully",
       });
 
     } catch (err) {
+      console.log(
+        "DELETE ORDER ERROR:",
+        err
+      );
 
-      res.status(500).json({
-        message: err.message,
+      return res.status(500).json({
+        message:
+          err.message,
       });
     }
   }
 );
-
 
 // =====================================================
 // ARCHIVE ONE
@@ -1261,9 +1620,7 @@ router.put(
   authMiddleware,
   roleMiddleware("admin"),
   async (req, res) => {
-
     try {
-
       const order =
         await Order.findByIdAndUpdate(
           req.params.id,
@@ -1275,26 +1632,28 @@ router.put(
           }
         );
 
-
       if (!order) {
-
         return res.status(404).json({
-          message: "Order not found",
+          message:
+            "Order not found",
         });
       }
 
-
-      res.json(order);
+      return res.json(order);
 
     } catch (err) {
+      console.log(
+        "ARCHIVE ORDER ERROR:",
+        err
+      );
 
-      res.status(500).json({
-        message: err.message,
+      return res.status(500).json({
+        message:
+          err.message,
       });
     }
   }
 );
-
 
 // =====================================================
 // ARCHIVE ALL
@@ -1306,9 +1665,7 @@ router.put(
   authMiddleware,
   roleMiddleware("admin"),
   async (req, res) => {
-
     try {
-
       await Order.updateMany(
         {},
         {
@@ -1316,20 +1673,25 @@ router.put(
         }
       );
 
-
-      res.json({
+      return res.json({
         message:
           "All orders archived",
       });
 
     } catch (err) {
+      console.log(
+        "ARCHIVE ALL ORDERS ERROR:",
+        err
+      );
 
-      res.status(500).json({
-        message: err.message,
+      return res.status(500).json({
+        message:
+          err.message,
       });
     }
   }
 );
 
-
 module.exports = router;
+
+
