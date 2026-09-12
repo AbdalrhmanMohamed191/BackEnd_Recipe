@@ -8,7 +8,7 @@ const Recipe = require("../models/recipeSchema");
 const Offer = require("../models/offerSchema");
 
 const LoyaltyWallet = require("../models/LoyaltyWallet");
-const LoyaltyTransaction = require("../models/LoyaltyTransaction");
+const LoyaltyTransaction = require("../models/loyaltyTransaction");
 
 const {
   authMiddleware,
