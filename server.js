@@ -12,7 +12,17 @@ const app = express();
 // ENV
 // =====================================================
 
-const isProduction = process.env.NODE_ENV === "production";
+// const isProduction = process.env.NODE_ENV === "production";
+
+// const allowedOrigin = isProduction
+//   ? process.env.PROD_CLIENT_URL
+//   : process.env.CLIENT_URL;
+
+
+const isProduction =
+  process.env.NODE_ENV === "production" ||
+  process.env.VERCEL === "1" ||
+  process.env.VERCEL === "true";
 
 const allowedOrigin = isProduction
   ? process.env.PROD_CLIENT_URL
