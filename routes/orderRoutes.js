@@ -7,7 +7,7 @@ const Order = require("../models/order");
 const Recipe = require("../models/recipeSchema");
 const Offer = require("../models/offerSchema");
 
-const LoyaltyWallet = require("../models/LoyaltyWallet");
+const LoyaltyWallet = require("../models/loyaltyWallet");
 const LoyaltyTransaction = require("../models/loyaltyTransaction");
 
 const {

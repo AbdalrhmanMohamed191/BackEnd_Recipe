@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
 
-const LoyaltyWallet = require("../models/LoyaltyWallet");
+const LoyaltyWallet = require("../models/loyaltyWallet");
 const LoyaltyTransaction = require("../models/loyaltyTransaction");
 
 const { authMiddleware } = require("../middleWares/authMiddleware");
